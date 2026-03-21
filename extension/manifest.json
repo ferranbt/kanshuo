@@ -1,0 +1,25 @@
+{
+  "manifest_version": 3,
+  "name": "Kanshuo Video Detector",
+  "version": "1.0",
+  "description": "Detects video playback and sends notifications to local server for subtitle translation",
+  "permissions": [
+    "tabs",
+    "webRequest"
+  ],
+  "host_permissions": [
+    "<all_urls>",
+    "ws://localhost:8080/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["content.js", "overlay.js"],
+      "run_at": "document_idle",
+      "all_frames": true
+    }
+  ]
+}
