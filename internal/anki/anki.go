@@ -46,11 +46,10 @@ func (c *Client) generateAudio(text string) ([]byte, error) {
 	return data, nil
 }
 
-// SaveWord saves a Chinese word to the specified Anki deck with audio pronunciation
-func (c *Client) SaveWord(deckName string, word Word) error {
+func (c *Client) deckExists(deckName string) (bool, error) {
 	decks, err := c.client.Decks.GetAll()
 	if err != nil {
-		return fmt.Errorf("failed to get Anki decks (is Anki running with AnkiConnect enabled?): %v", err)
+		return false, fmt.Errorf("failed to get Anki decks (is Anki running with AnkiConnect enabled?): %v", err)
 	}
 
 	deckExists := false
@@ -61,6 +60,45 @@ func (c *Client) SaveWord(deckName string, word Word) error {
 		}
 	}
 
+	return deckExists, nil
+}
+
+func (c *Client) ListWords(deckName string) ([]string, error) {
+	deckExists, err := c.deckExists(deckName)
+	if err != nil {
+		return nil, err
+	}
+	if !deckExists {
+		return []string{}, nil
+	}
+
+	query := fmt.Sprintf("deck:%s", deckName)
+	notesInfo, restErr := c.client.Notes.Get(query)
+	if restErr != nil {
+		return nil, fmt.Errorf("failed to get notes from deck: %s", restErr.Error)
+	}
+
+	if len(*notesInfo) == 0 {
+		return []string{}, nil
+	}
+
+	// Extract words from the Front field
+	words := make([]string, 0, len(*notesInfo))
+	for _, noteInfo := range *notesInfo {
+		if frontField, ok := noteInfo.Fields["Front"]; ok {
+			// The Front field contains: word<br><i>pinyin</i>
+			// Extract just the word part (before <br>)
+			word := strings.Split(frontField.Value, "<br>")[0]
+			words = append(words, word)
+		}
+	}
+
+	return words, nil
+}
+
+// SaveWord saves a Chinese word to the specified Anki deck with audio pronunciation
+func (c *Client) SaveWord(deckName string, word Word) error {
+	deckExists, err := c.deckExists(deckName)
 	if !deckExists {
 		if err := c.client.Decks.Create(deckName); err != nil {
 			return fmt.Errorf("failed to create Anki deck: %v", err)

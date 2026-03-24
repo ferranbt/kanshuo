@@ -11,9 +11,14 @@ import (
 
 	"github.com/ferranbt/kanshuo/internal"
 	"github.com/ferranbt/kanshuo/internal/anki"
+	"github.com/ferranbt/kanshuo/internal/testutil"
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
 	"github.com/spf13/cobra"
+)
+
+const (
+	defaultAnkiDeck = "kanshuo"
 )
 
 func main() {
@@ -47,6 +52,29 @@ func main() {
 		},
 	}
 
+	ankiCmd := &cobra.Command{
+		Use:   "anki",
+		Short: "Parent command for anki functions",
+		Long:  ``,
+	}
+
+	ankiDeckCmd := &cobra.Command{
+		Use:   "list",
+		Short: "List words in the Anki deck",
+		Long:  `List all words stored in the Anki deck.`,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			c := anki.NewClient(testutil.NewTestLogger())
+			words, err := c.ListWords(defaultAnkiDeck)
+			if err != nil {
+				return err
+			}
+			for _, word := range words {
+				fmt.Println(word)
+			}
+			return nil
+		},
+	}
+
 	processCmd.Flags().StringVarP(&archivePath, "archive", "a", "data", "Path to archive directory")
 	processCmd.Flags().StringVarP(&videoPath, "video", "v", "", "Path to video file (required)")
 	processCmd.Flags().BoolVarP(&traditional, "traditional", "t", false, "Use traditional Chinese characters")
@@ -54,8 +82,10 @@ func main() {
 
 	serverCmd.Flags().StringVarP(&archivePath, "archive", "a", "data", "Path to archive directory")
 
+	ankiCmd.AddCommand(ankiDeckCmd)
 	rootCmd.AddCommand(serverCmd)
 	rootCmd.AddCommand(processCmd)
+	rootCmd.AddCommand(ankiCmd)
 
 	if err := rootCmd.Execute(); err != nil {
 		fmt.Println(err)
@@ -179,7 +209,7 @@ func (s *Server) handleSaveWord(c echo.Context) error {
 		SentenceTranslation: wordData.SentenceTranslation,
 	}
 
-	if err := s.anki.SaveWord("kanshuo", word); err != nil {
+	if err := s.anki.SaveWord(defaultAnkiDeck, word); err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]interface{}{
 			"status": "error",
 			"error":  err.Error(),
