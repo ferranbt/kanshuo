@@ -11,13 +11,32 @@ import (
 func TestEasyOCR(t *testing.T) {
 	logger := testutil.NewTestLogger()
 
-	ocr, err := NewEasyOCR(logger, false)
+	ocr, err := NewEasyOCR(logger, true)
 	require.NoError(t, err)
 
 	defer ocr.Stop()
 
-	fmt.Println(ocr.OCR("./testdata/frame_01.jpg"))
-	fmt.Println(ocr.OCR("./testdata/frame_02.jpg"))
-	fmt.Println(ocr.OCR("./testdata/frame_03.png"))
-	fmt.Println(ocr.OCR("./testdata/frame_04.jpg"))
+	cases := []struct {
+		frameName string
+	}{
+		{"./testdata/frame_01.jpg"},
+		{"./testdata/frame_02.jpg"},
+		// {"./testdata/frame_03.jpg", false},
+		{"./testdata/frame_04.jpg"},
+		{"./testdata/frame_05.jpg"},
+		{"./testdata/frame_06.jpg"},
+		{"./testdata/frame_07.jpg"},
+		{"./testdata/frame_08.jpg"},
+	}
+
+	for _, m := range cases {
+		fmt.Println("---")
+		fmt.Println(ocr.OCR(m.frameName))
+
+		cropped, err := testutil.CropBottomQuarter(m.frameName)
+		require.NoError(t, err)
+
+		fmt.Println(cropped)
+		fmt.Println(ocr.OCR(cropped))
+	}
 }

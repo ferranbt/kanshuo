@@ -38,7 +38,12 @@ type EasyOCR struct {
 }
 
 func NewEasyOCR(logger *slog.Logger, traditional bool) (*EasyOCR, error) {
-	ocrSvc, err := python.New(logger, "ocr", ocrServiceScript)
+	args := []string{}
+	if traditional {
+		args = append(args, "--traditional")
+	}
+
+	ocrSvc, err := python.New(logger, "ocr", ocrServiceScript, args...)
 	if err != nil {
 		return nil, err
 	}

@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "Kanshuo Video Detector",
-  "version": "1.0",
-  "description": "Detects video playback and sends notifications to local server for subtitle translation",
+  "version": "1.1",
+  "description": "Detects YouTube and Bilibili video playback and sends notifications to local server for subtitle translation",
   "permissions": [
     "tabs",
     "webRequest"

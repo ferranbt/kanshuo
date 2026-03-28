@@ -126,7 +126,7 @@ func (c *Client) SaveWord(deckName string, word Word) error {
 	// Create a note with Chinese word information
 	// Front: Chinese word + Pinyin
 	// Back: Meaning + Part of Speech + Example Sentence (if provided)
-	front := fmt.Sprintf("%s<br><i>%s</i>", word.Text, word.Pinyin)
+	front := fmt.Sprintf("<span style='font-size: 48px;'>%s</span><br><i>%s</i>", word.Text, word.Pinyin)
 	back := fmt.Sprintf("%s<br><small>(%s)</small>", word.Meaning, word.Pos)
 
 	if word.Sentence != "" {

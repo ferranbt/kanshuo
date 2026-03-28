@@ -1,4 +1,4 @@
-// Content script - detects YouTube videos and triggers subtitle loading
+// Content script - detects YouTube and Bilibili videos and triggers subtitle loading
 
 console.log('[Kanshuo] Content script loaded');
 
@@ -16,24 +16,52 @@ function getYouTubeVideoID() {
   return urlParams.get('v');
 }
 
-// Monitor for URL changes (YouTube is a SPA)
+// Extract Bilibili video ID from URL
+function getBilibiliVideoID() {
+  const url = window.location.href;
+
+  // Check if we're on Bilibili
+  if (!url.includes('bilibili.com/video/')) {
+    return null;
+  }
+
+  // Extract BV ID from URL (e.g., BV1NUfCB1E7n)
+  const match = url.match(/\/video\/(BV[a-zA-Z0-9]+)/);
+  return match ? match[1] : null;
+}
+
+// Get video ID from either platform
+function getVideoID() {
+  return getYouTubeVideoID() || getBilibiliVideoID();
+}
+
+// Determine platform
+function getPlatform() {
+  if (window.location.href.includes('youtube.com')) return 'youtube';
+  if (window.location.href.includes('bilibili.com')) return 'bilibili';
+  return null;
+}
+
+// Monitor for URL changes (both YouTube and Bilibili are SPAs)
 let currentVideoID = null;
 
 function checkForNewVideo() {
-  const videoID = getYouTubeVideoID();
+  const videoID = getVideoID();
+  const platform = getPlatform();
 
   if (videoID && videoID !== currentVideoID) {
-    console.log('[Kanshuo] New YouTube video detected:', videoID);
+    console.log(`[Kanshuo] New ${platform} video detected:`, videoID);
     currentVideoID = videoID;
 
     // Request subtitles from background script
     chrome.runtime.sendMessage({
       type: 'LOAD_SUBTITLES',
-      videoID: videoID
+      videoID: videoID,
+      platform: platform
     });
   } else if (!videoID && currentVideoID) {
-    // Left YouTube video page
-    console.log('[Kanshuo] Left YouTube video page');
+    // Left video page
+    console.log('[Kanshuo] Left video page');
     currentVideoID = null;
   }
 }
