@@ -4,6 +4,22 @@ const SERVER_URL = 'http://localhost:8080';
 
 console.log('[Kanshuo Background] 🚀 Service worker started');
 
+// Update extension icon based on state
+function updateIcon(tabId, state) {
+  // States: 'none' (gray), 'available' (yellow), 'ready' (green), 'enabled' (blue)
+  const colors = {
+    none: '#9e9e9e',      // Gray - not on video page
+    available: '#ffc107', // Yellow - on video page, no subs
+    ready: '#4caf50',     // Green - subs available
+    enabled: '#2196f3'    // Blue - subs enabled
+  };
+
+  const color = colors[state] || colors.none;
+
+  chrome.action.setBadgeBackgroundColor({ color: color, tabId: tabId });
+  chrome.action.setBadgeText({ text: state === 'enabled' ? '●' : '', tabId: tabId });
+}
+
 // Listen for messages from content scripts
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   console.log('[Kanshuo Background] Received message:', message.type, 'from tab', sender.tab?.id);
@@ -21,6 +37,11 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     console.log('[Kanshuo Background] Saving word:', message.data);
     saveWord(message.data, sendResponse);
     return true; // Keep channel open for async response
+  }
+
+  if (message.type === 'UPDATE_ICON') {
+    // Update icon based on state
+    updateIcon(sender.tab.id, message.state);
   }
 });
 

@@ -118,6 +118,39 @@ class SubtitleOverlay {
       console.log('[Kanshuo Overlay] 📩 Received subtitles');
       this.loadSubtitles(event.detail.subtitles);
     });
+
+    // Listen for toggle subtitles event
+    document.addEventListener('kanshuo-toggle-subtitles', (event) => {
+      console.log('[Kanshuo Overlay] 🔄 Toggle subtitles:', event.detail.enabled);
+      if (event.detail.enabled) {
+        this.enable();
+      } else {
+        this.disable();
+      }
+    });
+  }
+
+  enable() {
+    console.log('[Kanshuo Overlay] ✅ Enabling subtitles');
+    if (this.overlayElement) {
+      this.overlayElement.style.display = 'block';
+    }
+    // Resume checking if we have subtitles
+    if (this.subtitles.length > 0 && !this.checkInterval) {
+      this.startSubtitleCheck();
+    }
+  }
+
+  disable() {
+    console.log('[Kanshuo Overlay] ⏹️ Disabling subtitles');
+    if (this.overlayElement) {
+      this.overlayElement.style.display = 'none';
+    }
+    // Stop checking
+    if (this.checkInterval) {
+      clearInterval(this.checkInterval);
+      this.checkInterval = null;
+    }
   }
 
   loadSubtitles(subtitles) {
@@ -148,11 +181,11 @@ class SubtitleOverlay {
       }
     }
 
-    // Create overlay if needed
+    // Create overlay if needed (but don't start timing)
     this.createOverlay();
 
-    // Start checking for subtitle display
-    this.startSubtitleCheck();
+    // DO NOT auto-start subtitles - wait for explicit enable() call
+    console.log('[Kanshuo Overlay] ✅ Subtitles loaded but not started (waiting for enable)');
   }
 
   startSubtitleCheck() {

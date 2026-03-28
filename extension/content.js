@@ -1,6 +1,11 @@
 // Content script - detects YouTube and Bilibili videos and triggers subtitle loading
 
-console.log('[Kanshuo] Content script loaded');
+// Prevent multiple initializations
+if (window.kanshuoInitialized) {
+  console.log('[Kanshuo] Already initialized, skipping');
+} else {
+  window.kanshuoInitialized = true;
+  console.log('[Kanshuo] Content script loaded');
 
 // Extract YouTube video ID from URL
 function getYouTubeVideoID() {
@@ -44,6 +49,45 @@ function getPlatform() {
 
 // Monitor for URL changes (both YouTube and Bilibili are SPAs)
 let currentVideoID = null;
+let currentPlatform = null;
+let hasSubtitles = false;
+let subtitlesEnabled = false;
+
+function getState() {
+  return {
+    platform: currentPlatform,
+    videoID: currentVideoID,
+    hasSubtitles: hasSubtitles,
+    subtitlesEnabled: subtitlesEnabled
+  };
+}
+
+function updatePopup() {
+  chrome.runtime.sendMessage({
+    type: 'STATE_UPDATE',
+    state: getState()
+  });
+  updateIcon();
+}
+
+function updateIcon() {
+  let iconState = 'none';
+
+  if (currentPlatform && currentVideoID) {
+    if (subtitlesEnabled) {
+      iconState = 'enabled';
+    } else if (hasSubtitles) {
+      iconState = 'ready';
+    } else {
+      iconState = 'available';
+    }
+  }
+
+  chrome.runtime.sendMessage({
+    type: 'UPDATE_ICON',
+    state: iconState
+  });
+}
 
 function checkForNewVideo() {
   const videoID = getVideoID();
@@ -52,6 +96,11 @@ function checkForNewVideo() {
   if (videoID && videoID !== currentVideoID) {
     console.log(`[Kanshuo] New ${platform} video detected:`, videoID);
     currentVideoID = videoID;
+    currentPlatform = platform;
+    hasSubtitles = false;
+    subtitlesEnabled = false;
+
+    updatePopup();
 
     // Request subtitles from background script
     chrome.runtime.sendMessage({
@@ -63,6 +112,11 @@ function checkForNewVideo() {
     // Left video page
     console.log('[Kanshuo] Left video page');
     currentVideoID = null;
+    currentPlatform = null;
+    hasSubtitles = false;
+    subtitlesEnabled = false;
+
+    updatePopup();
   }
 }
 
@@ -82,10 +136,12 @@ new MutationObserver(() => {
 // Also check periodically as backup
 setInterval(checkForNewVideo, 2000);
 
-// Listen for subtitle data from background script
-chrome.runtime.onMessage.addListener((message) => {
+// Listen for messages
+chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.type === 'SUBTITLES_LOADED') {
     console.log('[Kanshuo] Received subtitles:', message.subtitles.length, 'entries');
+    hasSubtitles = true;
+    updatePopup();
 
     // Dispatch event for overlay.js to handle
     const event = new CustomEvent('kanshuo-subtitles-loaded', {
@@ -99,5 +155,27 @@ chrome.runtime.onMessage.addListener((message) => {
 
   if (message.type === 'SUBTITLES_NOT_AVAILABLE') {
     console.log('[Kanshuo] No subtitles available for video:', message.videoID);
+    hasSubtitles = false;
+    updatePopup();
+  }
+
+  if (message.type === 'GET_STATE') {
+    sendResponse(getState());
+    return true;
+  }
+
+  if (message.type === 'TOGGLE_SUBTITLES') {
+    subtitlesEnabled = message.enabled;
+    console.log('[Kanshuo] Subtitles', subtitlesEnabled ? 'enabled' : 'disabled');
+
+    // Dispatch event for overlay.js to show/hide
+    const event = new CustomEvent('kanshuo-toggle-subtitles', {
+      detail: { enabled: subtitlesEnabled }
+    });
+    document.dispatchEvent(event);
+
+    updatePopup();
   }
 });
+
+} // End of initialization guard
