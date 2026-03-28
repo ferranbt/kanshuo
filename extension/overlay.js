@@ -13,6 +13,7 @@ class SubtitleOverlay {
     this.currentSentence = null; // Store the current displayed sentence (hanzi)
     this.currentSentencePinyin = null; // Store the current sentence pinyin
     this.currentSentenceTranslation = null; // Store the current sentence translation
+    this.showTranslation = true; // Whether to show English translation
   }
 
   init() {
@@ -128,6 +129,13 @@ class SubtitleOverlay {
         this.disable();
       }
     });
+
+    // Listen for toggle translation event
+    document.addEventListener('kanshuo-toggle-translation', (event) => {
+      console.log('[Kanshuo Overlay] 🌐 Toggle translation:', event.detail.showTranslation);
+      this.showTranslation = event.detail.showTranslation;
+      this.updateTranslationVisibility();
+    });
   }
 
   enable() {
@@ -150,6 +158,15 @@ class SubtitleOverlay {
     if (this.checkInterval) {
       clearInterval(this.checkInterval);
       this.checkInterval = null;
+    }
+  }
+
+  updateTranslationVisibility() {
+    if (!this.overlayElement) return;
+
+    const translationDiv = this.overlayElement.querySelector('.kanshuo-translation');
+    if (translationDiv) {
+      translationDiv.style.display = this.showTranslation ? 'block' : 'none';
     }
   }
 
@@ -570,7 +587,7 @@ class SubtitleOverlay {
       </style>
       <div class="kanshuo-region">
         <div class="kanshuo-text">${wordsHTML}</div>
-        ${annotation.translation ? `<div class="kanshuo-translation">${annotation.translation}</div>` : ''}
+        ${annotation.translation ? `<div class="kanshuo-translation" style="display: ${this.showTranslation ? 'block' : 'none'};">${annotation.translation}</div>` : ''}
       </div>
     `;
   }

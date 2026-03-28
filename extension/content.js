@@ -176,6 +176,16 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
     updatePopup();
   }
+
+  if (message.type === 'TOGGLE_TRANSLATION') {
+    console.log('[Kanshuo] Translation', message.showTranslation ? 'shown' : 'hidden');
+
+    // Dispatch event for overlay.js to show/hide translation
+    const event = new CustomEvent('kanshuo-toggle-translation', {
+      detail: { showTranslation: message.showTranslation }
+    });
+    document.dispatchEvent(event);
+  }
 });
 
 } // End of initialization guard

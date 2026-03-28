@@ -4,7 +4,8 @@ let currentState = {
   platform: null,
   videoID: null,
   hasSubtitles: false,
-  subtitlesEnabled: false
+  subtitlesEnabled: false,
+  showTranslation: true
 };
 
 // Update the popup UI based on current state
@@ -58,7 +59,12 @@ function updateUI() {
     if (currentState.subtitlesEnabled) {
       controls.innerHTML = `
         <button class="btn-disable" id="toggleBtn">Disable Subtitles</button>
+        <label style="display: flex; align-items: center; gap: 8px; padding: 8px; cursor: pointer;">
+          <input type="checkbox" id="translationCheckbox" ${currentState.showTranslation ? 'checked' : ''}>
+          <span style="font-size: 13px;">Show English translation</span>
+        </label>
       `;
+      document.getElementById('translationCheckbox').addEventListener('change', toggleTranslation);
     } else {
       controls.innerHTML = `
         <button class="btn-enable" id="toggleBtn">Enable Subtitles</button>
@@ -91,6 +97,23 @@ function toggleSubtitles() {
 
       currentState.subtitlesEnabled = newState;
       updateUI();
+    }
+  });
+}
+
+// Toggle translation visibility
+function toggleTranslation(event) {
+  const showTranslation = event.target.checked;
+
+  // Send message to content script
+  chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+    if (tabs[0]) {
+      chrome.tabs.sendMessage(tabs[0].id, {
+        type: 'TOGGLE_TRANSLATION',
+        showTranslation: showTranslation
+      });
+
+      currentState.showTranslation = showTranslation;
     }
   });
 }
