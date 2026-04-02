@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"syscall"
 
 	"github.com/ferranbt/kanshuo/internal"
@@ -23,9 +24,10 @@ const (
 
 func main() {
 	var (
-		archivePath string
-		videoPath   string
-		traditional bool
+		archivePath     string
+		videoPath       string
+		traditional     bool
+		framesPerSecond int
 	)
 
 	rootCmd := &cobra.Command{
@@ -48,7 +50,19 @@ func main() {
 		Short: "Process video and generate annotated subtitles",
 		Long:  `Downloads subtitles, extracts frames, performs OCR, and generates annotations for a video.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return processVideo(archivePath, videoPath, traditional)
+			return processVideo(archivePath, videoPath, framesPerSecond, traditional)
+		},
+	}
+
+	exportCmd := &cobra.Command{
+		Use:   "export-subtitles",
+		Short: "Export subtitles",
+		Long:  "Export subtitles to html format",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			id := args[0]
+
+			path := filepath.Join(archivePath, id, "subs_ann.json")
+			return internal.ExportSubtitlesPrintable(path, "./here.html")
 		},
 	}
 
@@ -78,14 +92,17 @@ func main() {
 	processCmd.Flags().StringVarP(&archivePath, "archive", "a", "data", "Path to archive directory")
 	processCmd.Flags().StringVarP(&videoPath, "video", "v", "", "Path to video file (required)")
 	processCmd.Flags().BoolVarP(&traditional, "traditional", "t", false, "Use traditional Chinese characters")
+	processCmd.Flags().IntVarP(&framesPerSecond, "frames-per-second", "f", 1, "Frames per second")
 	processCmd.MarkFlagRequired("video")
 
 	serverCmd.Flags().StringVarP(&archivePath, "archive", "a", "data", "Path to archive directory")
+	exportCmd.Flags().StringVarP(&archivePath, "archive", "a", "data", "Path to archive directory")
 
 	ankiCmd.AddCommand(ankiDeckCmd)
 	rootCmd.AddCommand(serverCmd)
 	rootCmd.AddCommand(processCmd)
 	rootCmd.AddCommand(ankiCmd)
+	rootCmd.AddCommand(exportCmd)
 
 	if err := rootCmd.Execute(); err != nil {
 		fmt.Println(err)
@@ -221,7 +238,7 @@ func (s *Server) handleSaveWord(c echo.Context) error {
 	})
 }
 
-func processVideo(archivePath, videoPath string, traditional bool) error {
+func processVideo(archivePath, videoPath string, framesPerSecond int, traditional bool) error {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
@@ -230,7 +247,7 @@ func processVideo(archivePath, videoPath string, traditional bool) error {
 
 	go func() {
 		defer close(doneCh)
-		if err := internal.Process(ctx, archivePath, videoPath, traditional); err != nil {
+		if err := internal.Process(ctx, archivePath, videoPath, framesPerSecond, traditional); err != nil {
 			errCh <- err
 		}
 	}()

@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"log"
 	"log/slog"
+	"math"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -28,6 +29,10 @@ import (
 	"github.com/yanyiwu/gojieba"
 )
 
+var (
+	frameRateFileName = "_frame_rate"
+)
+
 type VideoInfo struct {
 	ID        string  `json:"id"`
 	Title     string  `json:"title"`
@@ -35,12 +40,7 @@ type VideoInfo struct {
 	Duration  float64 `json:"duration"` // in seconds
 }
 
-const (
-	extractorYoutube  = "youtube"
-	extractorBilibili = "bilibili"
-)
-
-func Process(ctx context.Context, archivePath string, targetVideo string, traditional bool) error {
+func Process(ctx context.Context, archivePath string, targetVideo string, framesPerSecond int, traditional bool) error {
 	fmt.Printf("Processing video: %s, using traditional %v\n", targetVideo, traditional)
 
 	dl1 := ytdlp.New().
@@ -80,7 +80,8 @@ func Process(ctx context.Context, archivePath string, targetVideo string, tradit
 	if !fileExists(videoPath) {
 		dl := ytdlp.New().
 			FormatSort("res,ext:mp4:m4a").
-			Format("bestvideo[height<=480][ext=mp4]/bestvideo[height<=480]/best[height<=480]").
+			Format("bestvideo[height<=480][ext=mp4]+bestaudio[ext=m4a]/best[height<=480][ext=mp4]/best[height<=480]").
+			MergeOutputFormat("mp4").
 			CookiesFromBrowser("chrome").
 			NoPlaylist().
 			NoOverwrites().
@@ -101,7 +102,7 @@ func Process(ctx context.Context, archivePath string, targetVideo string, tradit
 		}
 	}
 
-	err = streamAndExtract(ctx, videoPath, streamPath, int(info.Duration), func(i, total int) {
+	err = streamAndExtract(ctx, videoPath, streamPath, framesPerSecond, int(info.Duration), func(i, total int) {
 		fmt.Printf("EXTRACT FRAMES (%d|%d)\n", i, total)
 	})
 	if err != nil {
@@ -122,7 +123,41 @@ func Process(ctx context.Context, archivePath string, targetVideo string, tradit
 		log.Fatal(err)
 	}
 
+	if err := generateSubFiles(annotationSubsPath); err != nil {
+		log.Fatal(err)
+	}
+
 	return nil
+}
+
+func generateSubFiles(annotationSubsPath string) error {
+	subs, err := readSubtitles(annotationSubsPath)
+	if err != nil {
+		return err
+	}
+
+	// generate the subtitle file in the same location as annotation path but with the same
+	// names as the video 'video.mp4' such that it is picked by media reproductors
+	subsContent := subtitlesToSRT(subs)
+	if err := os.WriteFile(filepath.Join(filepath.Dir(annotationSubsPath), "video.srt"), []byte(subsContent), 0644); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func readSubtitles(path string) ([]*Subtitle, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+
+	var subs []*Subtitle
+	if err := json.Unmarshal(data, &subs); err != nil {
+		return nil, err
+	}
+
+	return subs, nil
 }
 
 type frameEntry struct {
@@ -199,7 +234,7 @@ type WordAnalysis struct {
 	Meaning    []string
 }
 
-func streamAndExtract(ctx context.Context, videoPath string, output string, duration int, onProgress func(frame, total int)) error {
+func streamAndExtract(ctx context.Context, videoPath string, output string, framesPerSecond int, duration int, onProgress func(frame, total int)) error {
 	totalFrames := int(duration)
 	if dirExists(output) {
 		return nil
@@ -214,7 +249,7 @@ func streamAndExtract(ctx context.Context, videoPath string, output string, dura
 		"-i", videoPath,
 		"-progress", "pipe:1",
 		"-an",
-		"-vf", "fps=1",
+		"-vf", fmt.Sprintf("fps=%d", framesPerSecond),
 		"-vsync", "0",
 		tmpOutput+"/%08d.jpg",
 	)
@@ -238,6 +273,9 @@ func streamAndExtract(ctx context.Context, videoPath string, output string, dura
 		}
 	}
 
+	if err := os.WriteFile(filepath.Join(tmpOutput, frameRateFileName), fmt.Appendf(nil, "%d", framesPerSecond), 0644); err != nil {
+		return err
+	}
 	if err := cmd.Wait(); err != nil {
 		return fmt.Errorf("ffmpeg error: %w\n%s", err, stderrBuf.String())
 	}
@@ -274,18 +312,20 @@ func filter[T any](slice []T, predicate func(T) bool) []T {
 	return result
 }
 
-func frameNameToSeconds(name string) (float64, error) {
+func frameNameToSeconds(name string, framesPerSecond int) (float64, error) {
 	// Strip extension and path, keep only the number
 	base := filepath.Base(name)
 	numStr := strings.TrimSuffix(base, filepath.Ext(base))
 
+	// e.g. "00000003.jpg" -> 3
 	frameNum, err := strconv.Atoi(numStr)
 	if err != nil {
 		return 0, fmt.Errorf("invalid frame name %q: %w", name, err)
 	}
 
-	// fps=1 means 1 frame per second, frames are 1-indexed
-	return float64(frameNum - 1), nil
+	// frames are 1-indexed, so subtract 1 before dividing
+	// e.g. frame 3 at 2fps -> (3-1)/2 = 1.0s
+	return float64(frameNum-1) / float64(framesPerSecond), nil
 }
 
 func mergeFramesToSubtitles(frames []*frameEntry) []*Subtitle {
@@ -343,13 +383,27 @@ func performOCR(ctx context.Context, logger *slog.Logger, framesDir string, trad
 	totalEntries := len(entries)
 	var current atomic.Int32
 
+	framesPerSecond := 1
+
+	framesRateFile := filepath.Join(framesDir, frameRateFileName)
+	if _, err := os.Stat(framesRateFile); err == nil {
+		data, err := os.ReadFile(framesRateFile)
+		if err != nil {
+			return nil, err
+		}
+		framesPerSecond, err = strconv.Atoi(string(data))
+		if err != nil {
+			return nil, err
+		}
+	}
+
 	var frameEntries []*frameEntry
 	for _, e := range entries {
 		if !strings.HasSuffix(e.Name(), ".jpg") {
 			continue
 		}
 
-		framePosition, err := frameNameToSeconds(e.Name())
+		framePosition, err := frameNameToSeconds(e.Name(), framesPerSecond)
 		if err != nil {
 			return nil, err
 		}
@@ -527,13 +581,8 @@ func annotateSubtitle(ctx context.Context, subsPath string, annotationPath strin
 		}
 	}
 
-	data, err := os.ReadFile(annotationPath)
+	subs, err := readSubtitles(annotationPath)
 	if err != nil {
-		return err
-	}
-
-	var subs []*Subtitle
-	if err := json.Unmarshal(data, &subs); err != nil {
 		return err
 	}
 
@@ -734,4 +783,34 @@ func copyFile(src, dst string) error {
 		return err
 	}
 	return os.WriteFile(dst, data, 0644)
+}
+
+func subtitlesToSRT(subtitles []*Subtitle) string {
+	var sb strings.Builder
+
+	for i, sub := range subtitles {
+		// Index (1-based)
+		fmt.Fprintf(&sb, "%d\n", i+1)
+
+		// Timecodes: 00:00:00,000 --> 00:00:00,000
+		fmt.Fprintf(&sb, "%s --> %s\n", secondsToSRTTime(sub.StartPosition), secondsToSRTTime(sub.EndPosition))
+
+		// Text
+		fmt.Fprintf(&sb, "%s\n", sub.Text)
+
+		// Blank line between entries
+		sb.WriteByte('\n')
+	}
+
+	return sb.String()
+}
+
+// secondsToSRTTime converts a float64 seconds value to SRT timestamp format: 00:00:00,000
+func secondsToSRTTime(seconds float64) string {
+	h := int(seconds) / 3600
+	m := (int(seconds) % 3600) / 60
+	s := int(seconds) % 60
+	ms := int(math.Round((seconds - math.Floor(seconds)) * 1000))
+
+	return fmt.Sprintf("%02d:%02d:%02d,%03d", h, m, s, ms)
 }
