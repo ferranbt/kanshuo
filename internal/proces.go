@@ -235,7 +235,7 @@ type WordAnalysis struct {
 }
 
 func streamAndExtract(ctx context.Context, videoPath string, output string, framesPerSecond int, duration int, onProgress func(frame, total int)) error {
-	totalFrames := int(duration)
+	totalFrames := int(math.Ceil(float64(duration) * float64(framesPerSecond)))
 	if dirExists(output) {
 		return nil
 	}
