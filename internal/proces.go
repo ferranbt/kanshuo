@@ -72,6 +72,7 @@ func Process(ctx context.Context, archivePath string, targetVideo string, frames
 		streamPath         = filepath.Join(archiveTargetPath, "temp_frames")
 		outputSubsPath     = filepath.Join(archiveTargetPath, "subs.json")
 		annotationSubsPath = filepath.Join(archiveTargetPath, "subs_ann.json")
+		htmlRenderPath     = filepath.Join(archiveTargetPath, "subs.html")
 	)
 
 	fmt.Println("-- video info --")
@@ -127,6 +128,10 @@ func Process(ctx context.Context, archivePath string, targetVideo string, frames
 		log.Fatal(err)
 	}
 
+	if err := ExportSubtitlesPrintable(annotationSubsPath, htmlRenderPath); err != nil {
+		log.Fatal(err)
+	}
+
 	return nil
 }
 
@@ -154,7 +159,7 @@ func readSubtitles(path string) ([]*Subtitle, error) {
 
 	var subs []*Subtitle
 	if err := json.Unmarshal(data, &subs); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("error unmarshaling subs: %v", err)
 	}
 
 	return subs, nil
@@ -524,12 +529,7 @@ wait:
 		return nil, err
 	}
 
-	// filter and keep only frames that have confidence higher than 0.1
-	framesWithSubs := filter(frameEntries, func(i *frameEntry) bool {
-		return i.Result.Confidence > minOCRConfidence
-	})
-
-	return framesWithSubs, nil
+	return frameEntries, nil
 }
 
 func extractSubtitlesFromFrames(ctx context.Context, framesDir string, outputSubs string, traditional bool, progress func(i int, total int)) error {
@@ -561,6 +561,11 @@ func extractSubtitlesFromFrames(ctx context.Context, framesDir string, outputSub
 		sub.Simplified = out
 	}
 
+	// filter and keep only subtitles that have confidence higher than 0.1
+	subs = filter(subs, func(i *Subtitle) bool {
+		return i.Confidence > minOCRConfidence
+	})
+
 	subsRaw, err := json.Marshal(subs)
 	if err != nil {
 		return err
@@ -585,6 +590,8 @@ func annotateSubtitle(ctx context.Context, subsPath string, annotationPath strin
 	if err != nil {
 		return err
 	}
+
+	subs = filterSubtitles(subs)
 
 	allComputed := true
 	for _, s := range subs {
@@ -813,4 +820,106 @@ func secondsToSRTTime(seconds float64) string {
 	ms := int(math.Round((seconds - math.Floor(seconds)) * 1000))
 
 	return fmt.Sprintf("%02d:%02d:%02d,%03d", h, m, s, ms)
+}
+
+func pickBest(cluster []*Subtitle) *Subtitle {
+	best := cluster[0]
+	for _, s := range cluster[1:] {
+		if s.Confidence > best.Confidence {
+			best = s
+		} else if s.Confidence == best.Confidence && len([]rune(s.Simplified)) > len([]rune(best.Simplified)) {
+			best = s
+		}
+	}
+	return best
+}
+
+func filterSubtitles(subs []*Subtitle) []*Subtitle {
+	res := []*Subtitle{}
+
+	clusters := clusterSubtitles(subs)
+	for _, c := range clusters {
+		sel := pickBest(c)
+		res = append(res, sel)
+	}
+
+	return res
+}
+
+func clusterSubtitles(subs []*Subtitle) [][]*Subtitle {
+	if len(subs) == 0 {
+		return nil
+	}
+
+	normalize := func(s string) string {
+		r := []rune(s)
+		for len(r) > 0 && r[0] < 0x4E00 {
+			r = r[1:]
+		}
+		return string(r)
+	}
+
+	similarity := func(a, b string) float64 {
+		a = normalize(a)
+		b = normalize(b)
+		maxLen := max(len([]rune(a)), len([]rune(b)))
+		if maxLen == 0 {
+			return 1.0
+		}
+		return 1.0 - float64(levenshtein(a, b))/float64(maxLen)
+	}
+
+	similarityThreshold := func(length int) float64 {
+		if length <= 5 {
+			return 0.75
+		} else if length <= 10 {
+			return 0.82
+		}
+		return 0.85
+	}
+
+	var clusters [][]*Subtitle
+	current := []*Subtitle{subs[0]}
+
+	for i := 1; i < len(subs); i++ {
+		representative := pickBest(current)
+		maxLen := max(len([]rune(subs[i].Simplified)), len([]rune(representative.Simplified)))
+
+		if similarity(subs[i].Simplified, representative.Simplified) >= similarityThreshold(maxLen) {
+			current = append(current, subs[i])
+		} else {
+			clusters = append(clusters, current)
+			current = []*Subtitle{subs[i]}
+		}
+	}
+	clusters = append(clusters, current)
+
+	return clusters
+}
+
+func levenshtein(a, b string) int {
+	ra := []rune(a)
+	rb := []rune(b)
+	la, lb := len(ra), len(rb)
+
+	dp := make([][]int, la+1)
+	for i := range dp {
+		dp[i] = make([]int, lb+1)
+		dp[i][0] = i
+	}
+	for j := 0; j <= lb; j++ {
+		dp[0][j] = j
+	}
+
+	for i := 1; i <= la; i++ {
+		for j := 1; j <= lb; j++ {
+			if ra[i-1] == rb[j-1] {
+				dp[i][j] = dp[i-1][j-1]
+			} else {
+				dp[i][j] = 1 + min(dp[i-1][j], dp[i][j-1], dp[i-1][j-1])
+			}
+		}
+	}
+
+	return dp[la][lb]
 }

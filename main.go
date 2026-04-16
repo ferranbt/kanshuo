@@ -158,7 +158,8 @@ func startServer(archivePath string) error {
 	e.Use(middleware.CORS())
 	e.Use(srv.errorLoggingMiddleware())
 
-	e.GET("/subtitles", srv.handleGetSubtitles)
+	e.GET("/videos/:id/subs", srv.handleGetSubtitles)
+	e.GET("/videos/:id", srv.handleGetVideo)
 	e.POST("/save", srv.handleSaveWord)
 
 	e.Logger.Fatal(e.Start(":8080"))
@@ -166,25 +167,44 @@ func startServer(archivePath string) error {
 	return nil
 }
 
-// Handle GET request for subtitles by video ID
-func (s *Server) handleGetSubtitles(c echo.Context) error {
-	videoID := c.QueryParam("id")
-	if videoID == "" {
-		return c.JSON(http.StatusBadRequest, map[string]string{
-			"error": "Missing 'id' parameter",
-		})
-	}
-
+func (s *Server) loadSubs(c echo.Context, videoID string) ([]*internal.Subtitle, error) {
 	subs, ok, err := internal.LoadSubtitles(s.archivePath, videoID)
 	if err != nil {
-		return c.JSON(http.StatusInternalServerError, map[string]string{
+		return nil, c.JSON(http.StatusInternalServerError, map[string]string{
 			"error": fmt.Errorf("Failed to read subtitles: %v", err).Error(),
 		})
 	}
 	if !ok {
-		return c.JSON(http.StatusOK, map[string]interface{}{
+		return nil, c.JSON(http.StatusOK, map[string]interface{}{
 			"available": false,
 		})
+	}
+	return subs, nil
+}
+
+func (s *Server) handleGetVideo(c echo.Context) error {
+	videoID := c.Param("id")
+
+	subs, err := s.loadSubs(c, videoID)
+	if err != nil {
+		return err
+	}
+
+	page, err := internal.RenderPage(subs)
+	if err != nil {
+		return err
+	}
+
+	return c.HTML(http.StatusOK, page)
+}
+
+// Handle GET request for subtitles by video ID
+func (s *Server) handleGetSubtitles(c echo.Context) error {
+	videoID := c.Param("id")
+
+	subs, err := s.loadSubs(c, videoID)
+	if err != nil {
+		return err
 	}
 
 	s.logger.Info("Served subtitles", "id", videoID)

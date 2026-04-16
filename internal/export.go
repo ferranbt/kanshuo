@@ -13,6 +13,15 @@ func ExportSubtitlesPrintable(subtitlesPath string, outputPath string) error {
 		return err
 	}
 
+	sb, err := RenderPage(subtitles)
+	if err != nil {
+		return err
+	}
+
+	return os.WriteFile(outputPath, []byte(sb), 0644)
+}
+
+func RenderPage(subtitles []*Subtitle) (string, error) {
 	var sb strings.Builder
 
 	sb.WriteString(`<!DOCTYPE html>
@@ -41,5 +50,5 @@ func ExportSubtitlesPrintable(subtitlesPath string, outputPath string) error {
 </body>
 </html>`)
 
-	return os.WriteFile(outputPath, []byte(sb.String()), 0644)
+	return sb.String(), nil
 }

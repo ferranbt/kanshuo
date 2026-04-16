@@ -50,7 +50,7 @@ async function loadSubtitles(videoID, tabId) {
   try {
     console.log('[Kanshuo Background] Fetching subtitles from server...');
 
-    const response = await fetch(`${SERVER_URL}/subtitles?id=${videoID}`);
+    const response = await fetch(`${SERVER_URL}/videos/${videoID}/subs`);
 
     if (!response.ok) {
       console.error('[Kanshuo Background] ❌ Failed to fetch subtitles:', response.status);
