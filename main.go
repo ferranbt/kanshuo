@@ -7,7 +7,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
-	"path/filepath"
+	"strings"
 	"syscall"
 
 	"github.com/ferranbt/kanshuo/internal"
@@ -54,18 +54,6 @@ func main() {
 		},
 	}
 
-	exportCmd := &cobra.Command{
-		Use:   "export-subtitles",
-		Short: "Export subtitles",
-		Long:  "Export subtitles to html format",
-		RunE: func(cmd *cobra.Command, args []string) error {
-			id := args[0]
-
-			path := filepath.Join(archivePath, id, "subs_ann.json")
-			return internal.ExportSubtitlesPrintable(path, "./here.html")
-		},
-	}
-
 	ankiCmd := &cobra.Command{
 		Use:   "anki",
 		Short: "Parent command for anki functions",
@@ -96,13 +84,11 @@ func main() {
 	processCmd.MarkFlagRequired("video")
 
 	serverCmd.Flags().StringVarP(&archivePath, "archive", "a", "data", "Path to archive directory")
-	exportCmd.Flags().StringVarP(&archivePath, "archive", "a", "data", "Path to archive directory")
 
 	ankiCmd.AddCommand(ankiDeckCmd)
 	rootCmd.AddCommand(serverCmd)
 	rootCmd.AddCommand(processCmd)
 	rootCmd.AddCommand(ankiCmd)
-	rootCmd.AddCommand(exportCmd)
 
 	if err := rootCmd.Execute(); err != nil {
 		fmt.Println(err)
@@ -168,17 +154,23 @@ func startServer(archivePath string) error {
 }
 
 func (s *Server) loadSubs(c echo.Context, videoID string) ([]*internal.Subtitle, error) {
-	subs, ok, err := internal.LoadSubtitles(s.archivePath, videoID)
+	subs, err := internal.LoadSubtitles(s.archivePath, videoID)
 	if err != nil {
+		// if the name starts with BV (Bilibili) try to load it as _p1 since maybe is the first
+		// part of a collection, the rest of the entries will have already the _p2 suffix once called
+		// by the extension but not the first one
+		if strings.HasPrefix(videoID, "BV") {
+			subs, err := internal.LoadSubtitles(s.archivePath, videoID+"_p1")
+			if err == nil {
+				return subs, nil
+			}
+		}
+
 		return nil, c.JSON(http.StatusInternalServerError, map[string]string{
 			"error": fmt.Errorf("Failed to read subtitles: %v", err).Error(),
 		})
 	}
-	if !ok {
-		return nil, c.JSON(http.StatusOK, map[string]interface{}{
-			"available": false,
-		})
-	}
+
 	return subs, nil
 }
 

@@ -72,7 +72,6 @@ func Process(ctx context.Context, archivePath string, targetVideo string, frames
 		streamPath         = filepath.Join(archiveTargetPath, "temp_frames")
 		outputSubsPath     = filepath.Join(archiveTargetPath, "subs.json")
 		annotationSubsPath = filepath.Join(archiveTargetPath, "subs_ann.json")
-		htmlRenderPath     = filepath.Join(archiveTargetPath, "subs.html")
 	)
 
 	fmt.Println("-- video info --")
@@ -128,10 +127,6 @@ func Process(ctx context.Context, archivePath string, targetVideo string, frames
 		log.Fatal(err)
 	}
 
-	if err := ExportSubtitlesPrintable(annotationSubsPath, htmlRenderPath); err != nil {
-		log.Fatal(err)
-	}
-
 	return nil
 }
 
@@ -176,28 +171,28 @@ func (f *frameEntry) Equal(ff *frameEntry) bool {
 	return f.Path == ff.Path && f.Position == ff.Position
 }
 
-func LoadSubtitles(artifactsPath string, id string) ([]*Subtitle, bool, error) {
+func LoadSubtitles(artifactsPath string, id string) ([]*Subtitle, error) {
 	subsPath := filepath.Join(artifactsPath, id, "subs_ann.json")
 	_, err := os.Stat(subsPath)
 	if err != nil {
 		if err == os.ErrNotExist {
-			return nil, false, nil
+			return nil, fmt.Errorf("not found")
 		} else {
-			return nil, false, err
+			return nil, err
 		}
 	}
 
 	data, err := os.ReadFile(subsPath)
 	if err != nil {
-		return nil, false, err
+		return nil, err
 	}
 
 	var subtitles []*Subtitle
 	if err := json.Unmarshal(data, &subtitles); err != nil {
-		return nil, false, err
+		return nil, err
 	}
 
-	return subtitles, true, nil
+	return subtitles, nil
 }
 
 type Subtitle struct {
@@ -685,7 +680,7 @@ func annotateText(d *cedict.Dict, j *gojieba.Jieba, sub *Subtitle) (*Annotation,
 func convertToPinyinTones(pinyin string) (result string) {
 	defer func() {
 		if r := recover(); r != nil {
-			fmt.Printf("Failed to convert pinyin: %s", pinyin)
+			fmt.Printf("Failed to convert pinyin: %s\n", pinyin)
 			// cedict.PinyinTones panicked (likely unexpected input), return original pinyin
 			result = pinyin
 		}
