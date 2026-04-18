@@ -25,14 +25,17 @@ function getYouTubeVideoID() {
 function getBilibiliVideoID() {
   const url = window.location.href;
 
-  // Check if we're on Bilibili
   if (!url.includes('bilibili.com/video/')) {
     return null;
   }
 
-  // Extract BV ID from URL (e.g., BV1NUfCB1E7n)
   const match = url.match(/\/video\/(BV[a-zA-Z0-9]+)/);
-  return match ? match[1] : null;
+  if (!match) return null;
+
+  const bvid = match[1];
+
+  const pMatch = url.match(/[?&]p=(\d+)/);
+  return pMatch ? `${bvid}_p${pMatch[1]}` : bvid;
 }
 
 // Get video ID from either platform
