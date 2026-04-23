@@ -527,6 +527,8 @@ wait:
 	return frameEntries, nil
 }
 
+const cedicDictLocation = "/tmp/cedic.dict"
+
 func extractSubtitlesFromFrames(ctx context.Context, framesDir string, outputSubs string, traditional bool, progress func(i int, total int)) error {
 	if fileExists(outputSubs) {
 		return nil
@@ -544,7 +546,19 @@ func extractSubtitlesFromFrames(ctx context.Context, framesDir string, outputSub
 		return err
 	}
 
-	d := cedict.New()
+	var d *cedict.Dict
+	if fileExists(cedicDictLocation) {
+		d, err = cedict.Load(cedicDictLocation)
+		if err != nil {
+			return err
+		}
+	} else {
+		d = cedict.New()
+
+		if err := d.Save(cedicDictLocation); err != nil {
+			fmt.Printf("failed to save cedict dictionary: %v", err)
+		}
+	}
 
 	for _, sub := range subs {
 		out, err := s2t.Convert(sub.Text)
