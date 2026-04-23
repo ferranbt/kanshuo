@@ -5,10 +5,14 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
 	"log"
 	"log/slog"
 	"math"
+	"net/http"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -20,7 +24,6 @@ import (
 
 	_ "embed"
 
-	gt "github.com/bas24/googletranslatefree"
 	"github.com/ferranbt/kanshuo/internal/ocr"
 	"github.com/ferranbt/kanshuo/internal/testutil"
 	"github.com/jcramb/cedict"
@@ -657,9 +660,9 @@ LOOP:
 }
 
 func annotateText(d *cedict.Dict, j *gojieba.Jieba, sub *Subtitle) (*Annotation, error) {
-	result, err := gt.Translate(sub.Simplified, "zh-CN", "en")
+	result, err := googleTranslate(sub.Simplified, "zh-CN", "en")
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to translate: %v", err)
 	}
 
 	ann := &Annotation{
@@ -931,4 +934,50 @@ func levenshtein(a, b string) int {
 	}
 
 	return dp[la][lb]
+}
+
+func googleTranslate(source, sourceLang, targetLang string) (string, error) {
+	// Code modified from 'github.com/bas24/googletranslatefree'
+	var text []string
+	var result []interface{}
+
+	encodedSource := url.QueryEscape(source)
+	url := "https://translate.googleapis.com/translate_a/single?client=gtx&sl=" +
+		sourceLang + "&tl=" + targetLang + "&dt=t&q=" + encodedSource
+
+	r, err := http.Get(url)
+	if err != nil {
+		return "", fmt.Errorf("failed to query: %v", err)
+	}
+	defer r.Body.Close()
+
+	body, err := io.ReadAll(r.Body)
+	if err != nil {
+		return "", fmt.Errorf("error reading response body: %v", err)
+	}
+
+	bReq := strings.Contains(string(body), `<title>Error 400 (Bad Request)`)
+	if bReq {
+		return "", fmt.Errorf("bad request")
+	}
+
+	err = json.Unmarshal(body, &result)
+	if err != nil {
+		return "", fmt.Errorf("failed to marshal: %v", err)
+	}
+
+	if len(result) > 0 {
+		inner := result[0]
+		for _, slice := range inner.([]interface{}) {
+			for _, translatedText := range slice.([]interface{}) {
+				text = append(text, fmt.Sprintf("%v", translatedText))
+				break
+			}
+		}
+		cText := strings.Join(text, "")
+
+		return cText, nil
+	} else {
+		return "", errors.New("No translated data in responce")
+	}
 }

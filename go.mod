@@ -5,7 +5,6 @@ go 1.25.5
 require (
 	github.com/Duckduckgot/gtts v1.3.4
 	github.com/atselvan/ankiconnect v1.1.1
-	github.com/bas24/googletranslatefree v0.0.0-20231117033553-f5859fe54d30
 	github.com/jcramb/cedict v1.0.0
 	github.com/labstack/echo/v4 v4.15.1
 	github.com/liuzl/gocc v0.0.0-20231231122217-0372e1059ca5
