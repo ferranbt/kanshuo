@@ -182,7 +182,7 @@ func (s *Server) handleGetVideo(c echo.Context) error {
 		return err
 	}
 
-	page, err := internal.RenderPage(subs)
+	page, err := internal.RenderPage(videoID, subs)
 	if err != nil {
 		return err
 	}

@@ -6,7 +6,7 @@ import (
 	"strings"
 )
 
-func RenderPage(subtitles []*Subtitle) (string, error) {
+func RenderPage(id string, subtitles []*Subtitle) (string, error) {
 	var sb strings.Builder
 
 	sb.WriteString(`<!DOCTYPE html>
@@ -22,6 +22,7 @@ func RenderPage(subtitles []*Subtitle) (string, error) {
   #controlsPanel { position: fixed; top: 46px; right: 16px; display: none; flex-direction: column; gap: 10px; background: #f5f5f5; padding: 10px 14px; border-radius: 6px; font-family: sans-serif; font-size: 13px; border: 1px solid #ddd; }
   #controlsPanel label { display: flex; align-items: center; gap: 8px; cursor: pointer; }
   #controlsPanel input[type=range] { width: 80px; cursor: pointer; }
+  #title { margin-bottom: 10px; }
 </style>
 </head>
 <body>
@@ -49,6 +50,7 @@ func RenderPage(subtitles []*Subtitle) (string, error) {
     Show pinyin
   </label>
 </div>
+<div id="title">` + id + `</div>
 `)
 
 	for i, s := range subtitles {
